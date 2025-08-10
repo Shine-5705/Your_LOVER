@@ -1,0 +1,35 @@
+{
+  "name": "whatsapp-personality-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for WhatsApp personality-based AI companions that simulate different relationship types",
+  "main": "build/index.js",
+  "type": "module",
+  "bin": {
+    "whatsapp-personality-server": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsc && node build/index.js",
+    "test": "node test/test-server.js",
+    "test:basic": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "whatsapp",
+    "personality",
+    "ai-companion",
+    "relationship-simulation",
+    "model-context-protocol"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.2",
+    "zod": "^3.25.76"
+  }
+}
