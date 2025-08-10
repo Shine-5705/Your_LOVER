@@ -1,4 +1,30 @@
-# WhatsApp Personality MCP Server
+# 🎭 AI Personality Companions - MCP Server
+
+> **🏆 Hackathon Submission**: MCP server for Puch AI integration that creates human-like AI companions with emotional intelligence.
+
+## 🎯 **Puch AI Integration**
+
+Users activate this MCP server in Puch AI with:
+```
+\mcp use your-lover
+```
+
+Then they can create and chat with AI companions like girlfriends, boyfriends, family members, and friends - all with human-like emotional intelligence!
+
+## 🌟 **What Makes This Special**
+
+Transform any chat into an **AI relationship platform** where users can create and chat with human-like companions:
+
+- 💕 **Romantic support** (girlfriend, boyfriend, lover)
+- 👨‍👩‍👧‍👦 **Family guidance** (mother, father, siblings)  
+- 👴👵 **Wisdom & stories** (grandparents)
+- 👫 **Friendship & fun** (casual companions)
+
+### 🧠 **Emotional Intelligence Features**
+- Recognizes emotional states and responds appropriately
+- Remembers conversation history and personal details
+- Provides relationship-appropriate advice and support
+- Celebrates achievements and offers comfort during difficulties
 
 A Model Context Protocol (MCP) server that provides personality-based AI companions for WhatsApp interactions. This server allows users to create and interact with different relationship personalities such as family members, romantic partners, and friends, each with customizable characteristics.
 

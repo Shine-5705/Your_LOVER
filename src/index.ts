@@ -56,8 +56,9 @@ class WhatsAppPersonalityServer {
   constructor() {
     this.server = new Server(
       {
-        name: 'whatsapp-personality-server',
+        name: 'your-lover',
         version: '1.0.0',
+        description: '🎭 AI Personality Companions - Create and chat with human-like AI companions including girlfriends, boyfriends, family members, and friends. Each companion has emotional intelligence, remembers conversations, and provides relationship-appropriate responses.',
       },
       {
         capabilities: {
