@@ -1,1 +1,3 @@
-{"jsonrpc":"2.0","id":"server-error","error":{"code":-32600,"message":"Not Acceptable: Client must accept both application/json and text/event-stream"}}
+event: message
+data: {"jsonrpc":"2.0","id":123,"result":{"content":[{"type":"text","text":"918433135192"}],"structuredContent":{"result":"918433135192"},"isError":false}}
+
