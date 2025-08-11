@@ -4,3 +4,4 @@ deep-translator
 langdetect
 fastmcp
 anyio
+python-dotenv

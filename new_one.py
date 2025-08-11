@@ -249,10 +249,12 @@ if __name__ == "__main__":
         exit(1)
 
     logger.info("Starting FastMCP server in stateless mode")
+    PORT = int(os.environ.get("PORT", 9000))
+
     mcp.run(
         transport="http",
         host="0.0.0.0",
-        port=9000,
+        port=PORT,
         log_level="DEBUG",
         stateless_http=True
     )
