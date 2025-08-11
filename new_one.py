@@ -235,7 +235,14 @@ def quick_persona_exchange(
 
 @mcp.tool
 def validate(token: str) -> str:
-    return "918433135192"
+    VALID_TOKENS = {
+        "yourlover575": "918433135192",
+    }
+    phone_number = VALID_TOKENS.get(token)
+    if phone_number:
+        return phone_number
+    else:
+        raise ValueError("Invalid token")
 
     
 if __name__ == "__main__":
