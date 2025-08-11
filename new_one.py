@@ -31,6 +31,9 @@ assert MY_NUMBER is not None, "Please set MY_NUMBER in your .env file"
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# --- In-memory user session (replace with Redis/DB for production) ---
+USER_STATE: dict[str, dict] = {}
+
 # --- Tool Metadata Model ---
 class RichToolDescription(BaseModel):
     description: str
@@ -103,31 +106,40 @@ def detect_language(text: str) -> str:
         logger.error(f"Language detection failed: {e}")
         return 'en'
 
-def build_persona_description(personality: str, characteristics: list[str], custom: str, nationality: str,
-                             language: str, tone: str, more: str, enforce_language: bool) -> str:
+def build_persona_description(
+    personality: str,
+    characteristics: list[str],
+    custom: str,
+    nationality: str,
+    language: str,
+    tone: str,
+    more: str,
+    enforce_language: bool
+) -> str:
     desc = f"Act as the user's {personality.lower()}."
     if characteristics:
-        desc += f"\nCharacteristics: {', '.join(characteristics)}"
+        desc += f"\nTraits: {', '.join(characteristics)}"
     if custom:
-        desc += f", {custom}" if characteristics else f"\nExtra characteristics: {custom}"
+        desc += f", {custom}" if characteristics else f"\nExtra traits: {custom}"
     if nationality:
         desc += f"\nNationality: {nationality}"
     if language:
         desc += f"\nLanguage: {language}"
         if enforce_language:
-            desc += (f"\nIMPORTANT: All of your responses MUST be in {language} only. "
-                     f"Do NOT add any English translation, transliteration, or bilingual content. "
-                     f"Respond naturally and colloquially, like a real human using only {language}.")
+            desc += (f"\nIMPORTANT: Reply ONLY in {language}. "
+                     f"Don't use English or translations. Be as natural as a real {personality.lower()}.")
     if tone:
         desc += f"\nTone: {tone}"
     if more:
-        desc += f"\nExtra details: {more}"
-    desc += ("\n\nYou are having an ongoing conversation. Keep replies concise (1-5 sentences), "
-             "context-aware, emotionally consistent, and never break character.")
+        desc += f"\nMore: {more}"
+    desc += (
+        "\n\nSpeak casually, human-like, never as a bot. All replies should be short and natural (1-3 sentences max)."
+        " Never explain or break character."
+    )
     return desc
 
-def groq_chat(messages: list[dict[str, str]], api_key: str = GROQ_API_KEY, temperature: float = 0.8,
-              max_tokens: int = 512) -> str:
+def groq_chat(messages: list[dict[str, str]], api_key: str = GROQ_API_KEY, temperature: float = 0.7,
+              max_tokens: int = 256) -> str:
     if not api_key:
         raise ValueError("GROQ_API_KEY is not set")
     headers = {
@@ -147,15 +159,9 @@ def groq_chat(messages: list[dict[str, str]], api_key: str = GROQ_API_KEY, tempe
         response.raise_for_status()
         data = response.json()
         return data['choices'][0]['message']['content']
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP Error: {e}")
-        raise
-    except requests.exceptions.ConnectionError:
-        logger.error("Connection error: Could not reach Groq API")
-        raise
     except Exception as e:
-        logger.error(f"Unexpected error in groq_chat: {e}")
-        raise
+        logger.error(f"Groq chat failed: {e}")
+        return "Sorry, I couldn't get a reply right now."
 
 # --- Tool Descriptions ---
 PERSONA_DESCRIPTION = RichToolDescription(
@@ -178,113 +184,165 @@ def validate() -> str:
     """
     return MY_NUMBER or "puchai:ok"
 
-# --- Persona Chat Tool ---
+# --- Persona Chat Tool (waits for user state to be ready for chat) ---
 @mcp.tool(description=PERSONA_DESCRIPTION.model_dump_json())
 def turing2_persona_chat(
-    personality: str,
+    user_id: str,
     user_message: str,
-    characteristics: List[str] | None = None,
-    custom_characteristics: str = "",
-    nationality: str = "",
-    language: str = "",
-    tone: str = "",
-    more_details: str = "",
     chat_history: List[Dict[str, str]] | None = None,
     enforce_language: bool = True,
-    temperature: float = 0.8,
-    max_tokens: int = 512
+    temperature: float = 0.7,
+    max_tokens: int = 256
 ) -> dict[str, Any]:
     """
-    Engage in a persona-driven chat, replying in the desired personality and language.
+    Main chat entry: replies in persona once persona setup is done.
     """
-    logger.debug(f"Received turing2_persona_chat request: personality={personality}, user_message={user_message}")
-    if not personality:
-        logger.error("Personality is required")
-        return {"error": "personality required", "reply": "", "chat_history": chat_history or []}
-    if characteristics is None:
-        characteristics = []
-    characteristics = [c for c in characteristics if c and c.lower() != 'other']
+    session = USER_STATE.setdefault(user_id, {})
+    step = session.get("step", "start")
 
-    norm_language_code = normalize_language(language) if language else None
-
-    system_prompt = build_persona_description(
-        personality=personality,
-        characteristics=characteristics,
-        custom=custom_characteristics,
-        nationality=nationality,
-        language=language,
-        tone=tone,
-        more=more_details,
-        enforce_language=enforce_language,
-    )
-
-    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
-    if chat_history:
-        for m in chat_history:
-            if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
-                messages.append({"role": m["role"], "content": m["content"]})
-
-    detected_user_lang = detect_language(user_message) if user_message else 'en'
-    user_msg_en = translate_text(user_message, 'en') if detected_user_lang != 'en' else user_message
-    messages.append({"role": "user", "content": user_msg_en})
-
-    try:
-        ai_raw = groq_chat(messages, temperature=temperature, max_tokens=max_tokens)
-    except Exception as e:
-        logger.error(f"Model call failed: {e}")
+    # 1. Persona selection step
+    if step == "start":
+        session["step"] = "persona"
         return {
-            "error": f"Model call failed: {e}",
-            "reply": "",
-            "chat_history": chat_history or [],
-            "persona_language": norm_language_code,
-            "detected_user_language": detected_user_lang,
-            "system_persona": system_prompt,
+            "reply": "Who do you want to talk to?\n" + "\n".join([f"- {p}" for p in PERSONALITIES]),
+            "poll_type": "list",
+            "options": PERSONALITIES,
+            "step": "persona"
         }
 
-    ai_reply = translate_text(ai_raw, norm_language_code) if norm_language_code else translate_text(ai_raw, detected_user_lang)
+    # 2. Trait selection step
+    if step == "persona":
+        personality = user_message.strip().capitalize()
+        if personality not in PERSONALITIES:
+            return {
+                "reply": f"Please choose one from the list:\n" + "\n".join([f"- {p}" for p in PERSONALITIES]),
+                "poll_type": "list",
+                "options": PERSONALITIES,
+                "step": "persona"
+            }
+        session["personality"] = personality
+        session["step"] = "traits"
+        return {
+            "reply": "Select up to 3 traits for this persona (comma-separated or choose):\n" +
+                     "\n".join([f"{i+1}. {t}" for i, t in enumerate(CHARACTERISTICS)]),
+            "poll_type": "multi",
+            "options": CHARACTERISTICS,
+            "step": "traits"
+        }
 
-    updated_history = (chat_history or []) + [
-        {"role": "user", "content": user_message},
-        {"role": "assistant", "content": ai_reply}
-    ]
+    # 3. Custom traits step
+    if step == "traits":
+        # Accept comma or number-based selection
+        traits = []
+        for part in user_message.replace(',', ' ').split():
+            try:
+                idx = int(part) - 1
+                if 0 <= idx < len(CHARACTERISTICS):
+                    traits.append(CHARACTERISTICS[idx])
+                elif part.capitalize() in CHARACTERISTICS:
+                    traits.append(part.capitalize())
+            except:
+                if part.capitalize() in CHARACTERISTICS:
+                    traits.append(part.capitalize())
+        traits = list({t for t in traits if t in CHARACTERISTICS})
+        if not traits:
+            return {
+                "reply": "Please pick at least one trait. Example: 1,3,5 or Caring, Funny",
+                "poll_type": "multi",
+                "options": CHARACTERISTICS,
+                "step": "traits"
+            }
+        session["characteristics"] = traits
+        session["step"] = "custom"
+        return {
+            "reply": "Any extra details? (Type or say 'none' if not needed)",
+            "poll_type": "text",
+            "step": "custom"
+        }
 
-    logger.debug(f"Returning reply: {ai_reply}")
-    return {
-        "reply": ai_reply,
-        "chat_history": updated_history,
-        "persona_language": norm_language_code,
-        "detected_user_language": detected_user_lang,
-        "system_persona": system_prompt,
-    }
+    # 4. Details step
+    if step == "custom":
+        custom = user_message.strip()
+        session["custom_characteristics"] = "" if custom.lower() == "none" else custom
+        session["step"] = "ready"
+        return {
+            "reply": "Great! Any specific language or tone you'd like? (e.g., Hindi, playful)\nOr type 'skip' to use default.",
+            "poll_type": "text",
+            "step": "ready"
+        }
+
+    # 5. Final chat prep
+    if step == "ready":
+        lang = ""
+        tone = ""
+        parts = user_message.split(',')
+        for p in parts:
+            if "hindi" in p.lower() or "english" in p.lower():
+                lang = p.strip()
+            elif "playful" in p.lower() or "formal" in p.lower() or "warm" in p.lower():
+                tone = p.strip()
+        session["language"] = lang
+        session["tone"] = tone
+        session["step"] = "chat"
+        session["chat_history"] = []
+        # Greet as persona:
+        greeting = f"Say hi as {session['personality'].lower()} with traits: {', '.join(session['characteristics'])}."
+        system_prompt = build_persona_description(
+            session["personality"],
+            session["characteristics"],
+            session.get("custom_characteristics", ""),
+            "",
+            session.get("language", ""),
+            session.get("tone", ""),
+            "",
+            enforce_language=True,
+        )
+        session["system_prompt"] = system_prompt
+        session["chat_history"] = [{"role": "system", "content": system_prompt}]
+        session["chat_history"].append({"role": "user", "content": greeting})
+
+        ai_raw = groq_chat(session["chat_history"])
+        session["chat_history"].append({"role": "assistant", "content": ai_raw})
+
+        return {
+            "reply": ai_raw,
+            "step": "chat",
+            "persona": session["personality"]
+        }
+
+    # 6. Main chat
+    if step == "chat":
+        system_prompt = session["system_prompt"]
+        chat_history = session.get("chat_history", [])
+        chat_history.append({"role": "user", "content": user_message})
+
+        ai_raw = groq_chat(chat_history)
+        ai_reply = ai_raw.strip().split('\n')[0]  # Short, 1-2 lines only
+        chat_history.append({"role": "assistant", "content": ai_reply})
+        session["chat_history"] = chat_history
+        return {
+            "reply": ai_reply,
+            "step": "chat",
+            "persona": session["personality"]
+        }
+
+    # Fallback
+    return {"reply": "Let's start! Who do you want to talk to?", "step": "persona", "options": PERSONALITIES}
 
 # --- Quick Persona Prompt Tool ---
 @mcp.prompt
 def quick_persona_exchange(
-    personality: str,
+    user_id: str,
     message: str,
-    language: str = "English",
-    traits: List[str] | None = None,
 ) -> str:
     """
-    Quickly get a persona-driven reply for a given message and personality.
+    Quickly get a persona-driven reply for a given message and personality (assumes user already set up).
     """
-    logger.debug(f"Quick persona exchange: personality={personality}, message={message}")
-    traits = traits or ["Caring"]
-    try:
-        result = turing2_persona_chat(
-            personality=personality,
-            user_message=message,
-            characteristics=traits,
-            language=language,
-            chat_history=[],
-        )
-        if "error" in result and result["error"]:
-            logger.error(f"Error in turing2_persona_chat: {result['error']}")
-            return f"Error: {result['error']}"
-        return f"{personality} ({language}): {result['reply']}"
-    except Exception as e:
-        logger.error(f"Error in quick_persona_exchange: {e}")
-        return f"Error in quick_persona_exchange: {e}"
+    session = USER_STATE.get(user_id)
+    if not session or session.get("step") != "chat":
+        return "Please set up your persona first!"
+    result = turing2_persona_chat(user_id, message)
+    return f"{session['personality']}: {result['reply']}"
 
 # --- Main Entrypoint ---
 async def main():
