@@ -13,6 +13,11 @@ load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+@app.get("/")
+@app.head("/")
+async def root():
+    return {"status": "ok", "message": "Turing2 MCP server running"}
+
 # Custom FastMCP class to handle method listing
 class CustomFastMCP(FastMCP):
     async def handle_jsonrpc(self, request: Dict[str, Any], ctx: Context) -> Dict[str, Any]:
