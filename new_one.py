@@ -233,19 +233,23 @@ def quick_persona_exchange(
         logger.error(f"Error in quick_persona_exchange: {e}")
         return f"Error in quick_persona_exchange: {e}"
 
+from fastmcp import RawResponse
+
 @mcp.tool
-def validate(token: str, ctx: Context) -> dict:
+def validate(token: str) -> RawResponse:
     VALID_TOKENS = {
         "yourlover575": "918433135192",
     }
     phone_number = VALID_TOKENS.get(token)
     if phone_number:
-        # Return raw JSON-RPC response
-        return {
+        # Build the raw JSON-RPC response dict
+        raw_resp = {
             "jsonrpc": "2.0",
             "result": phone_number,
-            "id": ctx.request_id or "1"
+            "id": "1"  # or you can pass request id if available
         }
+        # Return RawResponse with raw JSON string
+        return RawResponse(json.dumps(raw_resp))
     else:
         raise ValueError("Invalid token")
 
