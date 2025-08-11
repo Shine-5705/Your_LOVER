@@ -9,25 +9,21 @@ import logging
 from dotenv import load_dotenv
 
 load_dotenv()
-# Set up logging
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Custom FastMCP class to handle method listing
 class CustomFastMCP(FastMCP):
     async def handle_jsonrpc(self, request: Dict[str, Any], ctx: Context) -> Dict[str, Any]:
         method = request.get("method")
         if method == "list_methods":
-            # Return list of available methods
-            available_methods = ["tools/call", "tools/list", "prompts/get", "prompts/list"]
             return {
                 "jsonrpc": "2.0",
-                "result": {"methods": available_methods},
+                "result": {"methods": ["tools/call", "tools/list", "prompts/get", "prompts/list"]},
                 "id": request.get("id", "server-generated-id")
             }
         return await super().handle_jsonrpc(request, ctx)
 
-# Initialize FastMCP in stateless mode
 mcp = CustomFastMCP("Turing2 Personality Chat MCP 🚀")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -43,9 +39,8 @@ CHARACTERISTICS = [
 ]
 
 LANG_MAP = {
-    'english': 'en', 'en': 'en',
-    'hindi': 'hi', 'spanish': 'es', 'french': 'fr', 'german': 'de', 'italian': 'it',
-    'portuguese': 'pt', 'russian': 'ru', 'japanese': 'ja', 'korean': 'ko',
+    'english': 'en', 'en': 'en', 'hindi': 'hi', 'spanish': 'es', 'french': 'fr', 'german': 'de',
+    'italian': 'it', 'portuguese': 'pt', 'russian': 'ru', 'japanese': 'ja', 'korean': 'ko',
     'chinese': 'zh', 'arabic': 'ar', 'bengali': 'bn', 'marathi': 'mr', 'tamil': 'ta',
     'telugu': 'te', 'gujarati': 'gu', 'punjabi': 'pa', 'urdu': 'ur'
 }
@@ -90,9 +85,8 @@ def build_persona_description(personality: str, characteristics: list[str], cust
     if language:
         desc += f"\nLanguage: {language}"
         if enforce_language:
-            desc += (f"\nIMPORTANT: All of your responses MUST be in {language} only. "
-                     f"Do NOT add any English translation, transliteration, or bilingual content. "
-                     f"Respond naturally and colloquially, like a real human using only {language}.")
+            desc += (f"\nIMPORTANT: All responses MUST be in {language} only. "
+                     f"Do NOT add translations or bilingual text.")
     if tone:
         desc += f"\nTone: {tone}"
     if more:
@@ -105,10 +99,7 @@ def groq_chat(messages: list[dict[str, str]], api_key: str = GROQ_API_KEY, tempe
               max_tokens: int = 512) -> str:
     if not api_key:
         raise ValueError("GROQ_API_KEY is not set")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
         "model": "llama3-70b-8192",
         "messages": messages,
@@ -116,21 +107,11 @@ def groq_chat(messages: list[dict[str, str]], api_key: str = GROQ_API_KEY, tempe
         "max_tokens": max_tokens,
         "stop": None
     }
-    try:
-        logger.debug("Sending request to Groq API...")
-        response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        return data['choices'][0]['message']['content']
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP Error: {e}")
-        raise
-    except requests.exceptions.ConnectionError:
-        logger.error("Connection error: Could not reach Groq API")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error in groq_chat: {e}")
-        raise
+    logger.debug("Sending request to Groq API...")
+    response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=60)
+    response.raise_for_status()
+    data = response.json()
+    return data['choices'][0]['message']['content']
 
 @mcp.tool
 def turing2_persona_chat(
@@ -147,14 +128,12 @@ def turing2_persona_chat(
     temperature: float = 0.8,
     max_tokens: int = 512
 ) -> dict[str, Any]:
-    logger.debug(f"Received turing2_persona_chat request: personality={personality}, user_message={user_message}")
+    logger.debug(f"Received chat request: {personality}, {user_message}")
     if not personality:
-        logger.error("Personality is required")
         return {"error": "personality required", "reply": "", "chat_history": chat_history or []}
     if characteristics is None:
         characteristics = []
     characteristics = [c for c in characteristics if c and c.lower() != 'other']
-
     norm_language_code = normalize_language(language) if language else None
 
     system_prompt = build_persona_description(
@@ -168,29 +147,17 @@ def turing2_persona_chat(
         enforce_language=enforce_language,
     )
 
-    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages = [{"role": "system", "content": system_prompt}]
     if chat_history:
         for m in chat_history:
-            if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
+            if m.get("role") in ("user", "assistant"):
                 messages.append({"role": m["role"], "content": m["content"]})
 
     detected_user_lang = detect_language(user_message) if user_message else 'en'
     user_msg_en = translate_text(user_message, 'en') if detected_user_lang != 'en' else user_message
     messages.append({"role": "user", "content": user_msg_en})
 
-    try:
-        ai_raw = groq_chat(messages, temperature=temperature, max_tokens=max_tokens)
-    except Exception as e:
-        logger.error(f"Model call failed: {e}")
-        return {
-            "error": f"Model call failed: {e}",
-            "reply": "",
-            "chat_history": chat_history or [],
-            "persona_language": norm_language_code,
-            "detected_user_language": detected_user_lang,
-            "system_persona": system_prompt,
-        }
-
+    ai_raw = groq_chat(messages, temperature=temperature, max_tokens=max_tokens)
     ai_reply = translate_text(ai_raw, norm_language_code) if norm_language_code else translate_text(ai_raw, detected_user_lang)
 
     updated_history = (chat_history or []) + [
@@ -198,7 +165,6 @@ def turing2_persona_chat(
         {"role": "assistant", "content": ai_reply}
     ]
 
-    logger.debug(f"Returning reply: {ai_reply}")
     return {
         "reply": ai_reply,
         "chat_history": updated_history,
@@ -214,48 +180,35 @@ def quick_persona_exchange(
     language: str = "English",
     traits: list[str] | None = None,
 ) -> str:
-    logger.debug(f"Quick persona exchange: personality={personality}, message={message}")
     traits = traits or ["Caring"]
-    try:
-        result = turing2_persona_chat(
-            personality=personality,
-            user_message=message,
-            characteristics=traits,
-            language=language,
-            chat_history=[],
-        )
-        if "error" in result and result["error"]:
-            logger.error(f"Error in turing2_persona_chat: {result['error']}")
-            return f"Error: {result['error']}"
-        return f"{personality} ({language}): {result['reply']}"
-    except Exception as e:
-        logger.error(f"Error in quick_persona_exchange: {e}")
-        return f"Error in quick_persona_exchange: {e}"
+    result = turing2_persona_chat(
+        personality=personality,
+        user_message=message,
+        characteristics=traits,
+        language=language,
+        chat_history=[],
+    )
+    if "error" in result and result["error"]:
+        return f"Error: {result['error']}"
+    return f"{personality} ({language}): {result['reply']}"
 
 if __name__ == "__main__":
-    try:
-        import requests
-        from deep_translator import GoogleTranslator
-        from langdetect import detect
-        logger.info("All dependencies imported successfully")
-    except ImportError as e:
-        logger.error(f"Dependency error: {e}")
-        logger.error("Please install required packages: uv pip install requests deep-translator langdetect fastmcp")
-        exit(1)
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import uvicorn
 
     if not GROQ_API_KEY:
-        logger.error("Error: GROQ_API_KEY environment variable is not set")
-        logger.error("Set it using: export GROQ_API_KEY='your-api-key'")
+        logger.error("GROQ_API_KEY environment variable not set")
         exit(1)
 
-    logger.info("Starting FastMCP server in stateless mode")
+    app = FastAPI()
+
+    @app.get("/")
+    async def root():
+        return JSONResponse({"status": "ok", "message": "Turing2 MCP server running"})
+
+    # Mount MCP server
+    mcp.mount_to_fastapi(app)
+
     PORT = int(os.environ.get("PORT", 9000))
-
-    mcp.run(
-        transport="http",
-        host="0.0.0.0",
-        port=PORT,
-        log_level="DEBUG",
-        stateless_http=True
-    )
-
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
