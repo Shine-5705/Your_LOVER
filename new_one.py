@@ -234,13 +234,13 @@ def quick_persona_exchange(
         return f"Error in quick_persona_exchange: {e}"
 
 @mcp.tool
-def validate(token: str) -> str:
+def validate(token: str):
     VALID_TOKENS = {
         "yourlover575": "918433135192",
     }
     phone_number = VALID_TOKENS.get(token)
     if phone_number:
-        return phone_number
+        return phone_number  # Just the string, not a dict
     else:
         raise ValueError("Invalid token")
 
