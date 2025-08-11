@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"server-error","error":{"code":-32700,"message":"Parse error: Expecting value: line 1 column 1 (char 0)"}}
