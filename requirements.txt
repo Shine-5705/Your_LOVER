@@ -5,3 +5,4 @@ langdetect
 fastmcp
 anyio
 python-dotenv
+fastapi
