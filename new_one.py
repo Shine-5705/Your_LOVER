@@ -3,11 +3,11 @@ import os
 import requests
 from typing import Optional, Any, Dict
 from fastmcp import FastMCP, Context
-from fastapi import FastAPI
 from deep_translator import GoogleTranslator
 from langdetect import detect
 import logging
 from dotenv import load_dotenv
+
 
 load_dotenv()
 # Set up logging
@@ -20,7 +20,7 @@ class CustomFastMCP(FastMCP):
         method = request.get("method")
         if method == "list_methods":
             # Return list of available methods
-            available_methods = ["tools/call", "tools/list", "prompts/get", "prompts/list", "validate"]
+            available_methods = ["tools/call", "tools/list", "prompts/get", "prompts/list"]
             return {
                 "jsonrpc": "2.0",
                 "result": {"methods": available_methods},
@@ -29,7 +29,7 @@ class CustomFastMCP(FastMCP):
         return await super().handle_jsonrpc(request, ctx)
 
 # Initialize FastMCP in stateless mode
-mcp = CustomFastMCP("Turing2 Personality Chat MCP 🚀")
+mcp = CustomFastMCP("Personality Chat MCP 🚀")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -233,28 +233,18 @@ def quick_persona_exchange(
         logger.error(f"Error in quick_persona_exchange: {e}")
         return f"Error in quick_persona_exchange: {e}"
 
-# Validate tool for Puch Chat authentication
 @mcp.tool
 def validate(token: str) -> str:
     # Example token validation map
     VALID_TOKENS = {
-        "yourLover575": "918433135192",  # replace with your real tokens & phone numbers
+        "yourlover575": "918433135192",  # replace with your real tokens & phone numbers
     }
     phone_number = VALID_TOKENS.get(token)
     if phone_number:
         return phone_number
     else:
         raise ValueError("Invalid token")
-
-# Add simple homepage route for testing
-app = FastAPI()
-
-@app.get("/")
-def home():
-    return {"status": "MCP server running", "endpoint": "/mcp/"}
-
-mcp.http_app = app  # attach FastAPI app to MCP's HTTP server
-
+    
 if __name__ == "__main__":
     try:
         import requests
@@ -263,7 +253,7 @@ if __name__ == "__main__":
         logger.info("All dependencies imported successfully")
     except ImportError as e:
         logger.error(f"Dependency error: {e}")
-        logger.error("Please install required packages: uv pip install requests deep-translator langdetect fastmcp fastapi")
+        logger.error("Please install required packages: uv pip install requests deep-translator langdetect fastmcp")
         exit(1)
 
     if not GROQ_API_KEY:
@@ -281,3 +271,5 @@ if __name__ == "__main__":
         log_level="DEBUG",
         stateless_http=True
     )
+
+
