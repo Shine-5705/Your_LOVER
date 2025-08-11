@@ -2,6 +2,8 @@ from mcp.server.fastmcp import FastMCP
 import os
 import requests
 from deep_translator import GoogleTranslator
+from dotenv import load_dotenv
+
 load_dotenv()
 
 # Create an MCP server

@@ -3,9 +3,10 @@ import requests
 import questionary
 from deep_translator import GoogleTranslator
 from langdetect import detect
+from dotenv import load_dotenv
+load_dotenv()
 
 # --- Settings ---
-load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"

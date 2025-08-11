@@ -22,6 +22,8 @@ dist/
 # Logs
 logs
 *.log
+.venv
+.env
 
 # Runtime data
 pids

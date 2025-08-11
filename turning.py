@@ -6,6 +6,8 @@ import requests
 import questionary
 from deep_translator import GoogleTranslator
 from langdetect import detect
+from dotenv import load_dotenv
+
 load_dotenv()
 
 # --- Settings ---

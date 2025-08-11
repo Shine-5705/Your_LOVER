@@ -6,6 +6,7 @@ import os
 import requests
 from deep_translator import GoogleTranslator
 from langdetect import detect
+from dotenv import load_dotenv
 load_dotenv()
 
 # FastAPI app
@@ -298,4 +299,4 @@ async def get_characteristics():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("personality_web:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("personality_web:app", host="127.0.0.1", port=8000, reload=True)
