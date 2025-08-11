@@ -8,15 +8,11 @@ from langdetect import detect
 import logging
 from dotenv import load_dotenv
 
+
 load_dotenv()
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-@app.get("/")
-@app.head("/")
-async def root():
-    return {"status": "ok", "message": "Turing2 MCP server running"}
 
 # Custom FastMCP class to handle method listing
 class CustomFastMCP(FastMCP):
@@ -34,6 +30,16 @@ class CustomFastMCP(FastMCP):
 
 # Initialize FastMCP in stateless mode
 mcp = CustomFastMCP("Turing2 Personality Chat MCP 🚀")
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"status": "MCP server running", "endpoint": "/mcp/"}
+
+mcp.http_app = app  # attach FastAPI app to MCP's HTTP server
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
