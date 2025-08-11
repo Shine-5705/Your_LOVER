@@ -29,17 +29,7 @@ class CustomFastMCP(FastMCP):
         return await super().handle_jsonrpc(request, ctx)
 
 # Initialize FastMCP in stateless mode
-mcp = CustomFastMCP("Turing2 Personality Chat MCP 🚀")
-
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def home():
-    return {"status": "MCP server running", "endpoint": "/mcp/"}
-
-mcp.http_app = app  # attach FastAPI app to MCP's HTTP server
+mcp = CustomFastMCP("Personality Chat MCP 🚀")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
