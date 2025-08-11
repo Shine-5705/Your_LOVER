@@ -1,39 +1,66 @@
-from __future__ import annotations
+import asyncio
 import os
-import requests
-from typing import Optional, Any, Dict
-from fastmcp import FastMCP, Context
-from deep_translator import GoogleTranslator
-from langdetect import detect
 import logging
+from typing import Optional, Any, Dict, List
+from datetime import datetime
 from dotenv import load_dotenv
 
+from fastmcp import FastMCP, Context
+from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
+from mcp import ErrorData, McpError
+from mcp.server.auth.provider import AccessToken
+from mcp.types import INVALID_PARAMS
 
+from pydantic import BaseModel
+import requests
+from deep_translator import GoogleTranslator
+from langdetect import detect
+
+# --- Load environment variables ---
 load_dotenv()
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
-# Custom FastMCP class to handle method listing
-class CustomFastMCP(FastMCP):
-    async def handle_jsonrpc(self, request: Dict[str, Any], ctx: Context) -> Dict[str, Any]:
-        method = request.get("method")
-        if method == "list_methods":
-            # Return list of available methods
-            available_methods = ["tools/call", "tools/list", "prompts/get", "prompts/list"]
-            return {
-                "jsonrpc": "2.0",
-                "result": {"methods": available_methods},
-                "id": request.get("id", "server-generated-id")
-            }
-        return await super().handle_jsonrpc(request, ctx)
-
-# Initialize FastMCP in stateless mode
-mcp = CustomFastMCP("Personality Chat MCP 🚀")
-
+AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
+MY_NUMBER = os.environ.get("MY_NUMBER")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+assert AUTH_TOKEN, "Please set AUTH_TOKEN in your .env file"
+assert MY_NUMBER is not None, "Please set MY_NUMBER in your .env file"
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# --- Tool Metadata Model ---
+class RichToolDescription(BaseModel):
+    description: str
+    use_when: str
+    side_effects: str | None = None
+
+# --- Auth Provider ---
+class SimpleBearerAuthProvider(BearerAuthProvider):
+    def __init__(self, token: str):
+        k = RSAKeyPair.generate()
+        super().__init__(public_key=k.public_key, jwks_uri=None, issuer=None, audience=None)
+        self.token = token
+
+    async def load_access_token(self, token: str) -> AccessToken | None:
+        if token == self.token:
+            return AccessToken(
+                token=token,
+                client_id="mcp-puchai-client",
+                scopes=["*"],
+                expires_at=None,
+            )
+        return None
+
+# --- FastMCP Setup ---
+mcp = FastMCP(
+    "Personality Chat MCP 🚀",
+    auth=SimpleBearerAuthProvider(AUTH_TOKEN),
+)
+
+# --- Personality/Traits Config ---
 PERSONALITIES = [
     "Brother", "Sister", "Lover", "Mother", "Father", "Girlfriend", "Boyfriend",
     "Friend", "Grandmother", "Grandfather"
@@ -42,7 +69,6 @@ CHARACTERISTICS = [
     "Caring", "Loving", "Funny", "Supportive", "Honest", "Adventurous",
     "Patient", "Understanding", "Well-mannered", "Confident", "Hardworking", "Talkative", "Quiet", "Other"
 ]
-
 LANG_MAP = {
     'english': 'en', 'en': 'en',
     'hindi': 'hi', 'spanish': 'es', 'french': 'fr', 'german': 'de', 'italian': 'it',
@@ -55,8 +81,6 @@ def normalize_language(lang: str | None) -> str | None:
     if not lang:
         return None
     l = lang.strip().lower()
-    if not l:
-        return None
     return LANG_MAP.get(l, l[:2])
 
 def translate_text(text: str, target_lang: str | None = 'en') -> str:
@@ -133,21 +157,46 @@ def groq_chat(messages: list[dict[str, str]], api_key: str = GROQ_API_KEY, tempe
         logger.error(f"Unexpected error in groq_chat: {e}")
         raise
 
-@mcp.tool
+# --- Tool Descriptions ---
+PERSONA_DESCRIPTION = RichToolDescription(
+    description="Chat as a custom persona (e.g., Brother, Friend, Girlfriend) with traits, language, and tone. Ideal for emotionally intelligent, role-playing, or multilingual responses.",
+    use_when="Use for conversations where the bot should answer in a specific character or tone, or when emotional intelligence or multilingual support is needed.",
+    side_effects=None,
+)
+VALIDATE_DESCRIPTION = RichToolDescription(
+    description="Quickly check if the Personality Chat MCP server is healthy and configured.",
+    use_when="Use to test server connection, status, or environment variable configuration.",
+    side_effects=None,
+)
+
+# --- Validation Tool ---
+@mcp.tool(description=VALIDATE_DESCRIPTION.model_dump_json())
+def validate() -> str:
+    """
+    Simple validation to check if the MCP server is configured correctly.
+    Returns MY_NUMBER if set, otherwise 'puchai:ok'.
+    """
+    return MY_NUMBER or "puchai:ok"
+
+# --- Persona Chat Tool ---
+@mcp.tool(description=PERSONA_DESCRIPTION.model_dump_json())
 def turing2_persona_chat(
     personality: str,
     user_message: str,
-    characteristics: list[str] | None = None,
+    characteristics: List[str] | None = None,
     custom_characteristics: str = "",
     nationality: str = "",
     language: str = "",
     tone: str = "",
     more_details: str = "",
-    chat_history: list[dict[str, str]] | None = None,
+    chat_history: List[Dict[str, str]] | None = None,
     enforce_language: bool = True,
     temperature: float = 0.8,
     max_tokens: int = 512
 ) -> dict[str, Any]:
+    """
+    Engage in a persona-driven chat, replying in the desired personality and language.
+    """
     logger.debug(f"Received turing2_persona_chat request: personality={personality}, user_message={user_message}")
     if not personality:
         logger.error("Personality is required")
@@ -208,13 +257,17 @@ def turing2_persona_chat(
         "system_persona": system_prompt,
     }
 
+# --- Quick Persona Prompt Tool ---
 @mcp.prompt
 def quick_persona_exchange(
     personality: str,
     message: str,
     language: str = "English",
-    traits: list[str] | None = None,
+    traits: List[str] | None = None,
 ) -> str:
+    """
+    Quickly get a persona-driven reply for a given message and personality.
+    """
     logger.debug(f"Quick persona exchange: personality={personality}, message={message}")
     traits = traits or ["Caring"]
     try:
@@ -233,43 +286,10 @@ def quick_persona_exchange(
         logger.error(f"Error in quick_persona_exchange: {e}")
         return f"Error in quick_persona_exchange: {e}"
 
-@mcp.tool
-def validate(token: str) -> str:
-    VALID_TOKENS = {
-        "yourlover575": "918433135192",
-    }
-    phone_number = VALID_TOKENS.get(token)
-    if phone_number:
-        return phone_number  # just a plain string here
-    else:
-        raise ValueError("Invalid token")
+# --- Main Entrypoint ---
+async def main():
+    logger.info("🚦 Starting Personality Chat MCP server on http://0.0.0.0:8086")
+    await mcp.run_async("streamable-http", host="0.0.0.0", port=8086)
 
-    
 if __name__ == "__main__":
-    try:
-        import requests
-        from deep_translator import GoogleTranslator
-        from langdetect import detect
-        logger.info("All dependencies imported successfully")
-    except ImportError as e:
-        logger.error(f"Dependency error: {e}")
-        logger.error("Please install required packages: uv pip install requests deep-translator langdetect fastmcp")
-        exit(1)
-
-    if not GROQ_API_KEY:
-        logger.error("Error: GROQ_API_KEY environment variable is not set")
-        logger.error("Set it using: export GROQ_API_KEY='your-api-key'")
-        exit(1)
-
-    logger.info("Starting FastMCP server in stateless mode")
-    PORT = int(os.environ.get("PORT", 9000))
-
-    mcp.run(
-        transport="http",
-        host="0.0.0.0",
-        port=PORT,
-        log_level="DEBUG",
-        stateless_http=True
-    )
-
-
+    asyncio.run(main())

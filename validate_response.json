@@ -1,3 +1,0 @@
-event: message
-data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"jsonrpc\":\"2.0\",\"result\":\"918433135192\",\"id\":\"1\"}"}],"structuredContent":{"jsonrpc":"2.0","result":"918433135192","id":"1"},"isError":false}}
-
