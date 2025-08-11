@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: yourlover
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python new_one.py
+    plan: free
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
